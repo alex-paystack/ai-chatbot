@@ -33,9 +33,15 @@ import {
   PromptInputFooter,
   PromptInputTools,
 } from "../../components/ai-elements/prompt-input";
-import { Fragment, useState } from "react";
+import { Fragment, useCallback, useState } from "react";
 import { useChat } from "@ai-sdk/react";
-import { CopyIcon, GlobeIcon, RefreshCcwIcon } from "lucide-react";
+import {
+  CopyIcon,
+  GlobeIcon,
+  RefreshCcwIcon,
+  ThumbsDownIcon,
+  ThumbsUpIcon,
+} from "lucide-react";
 import {
   Source,
   Sources,
@@ -85,6 +91,55 @@ export default function Chat() {
   const [model, setModel] = useState<string>(models[0].value);
   const [webSearch, setWebSearch] = useState(false);
   const { messages, sendMessage, status, regenerate } = useChat();
+  const [feedbackByMessage, setFeedbackByMessage] = useState<
+    Record<string, "up" | "down">
+  >({});
+  const [pendingFeedback, setPendingFeedback] = useState<Record<string, boolean>>(
+    {}
+  );
+
+  const submitHelpfulness = useCallback(
+    async (
+      messageId: string,
+      traceId: string | undefined,
+      rating: "up" | "down",
+      responseText: string
+    ) => {
+      if (!traceId) {
+        console.warn("No trace ID available for helpfulness feedback.");
+        return;
+      }
+
+      setPendingFeedback((prev) => ({ ...prev, [messageId]: true }));
+
+      try {
+        const response = await fetch("/api/feedback", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            traceId,
+            messageId,
+            rating,
+            responseText,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(errorText || "Failed to submit feedback");
+        }
+
+        setFeedbackByMessage((prev) => ({ ...prev, [messageId]: rating }));
+      } catch (error) {
+        console.error("Unable to submit helpfulness score", error);
+      } finally {
+        setPendingFeedback((prev) => ({ ...prev, [messageId]: false }));
+      }
+    },
+    []
+  );
 
   const handleSubmit = (message: PromptInputMessage) => {
     const hasText = Boolean(message.text);
@@ -140,7 +195,20 @@ export default function Chat() {
                   )}
                 {message.parts.map((part, i) => {
                   switch (part.type) {
-                    case "text":
+                    case "text": {
+                      const isLatestAssistant =
+                        message.role === "assistant" &&
+                        message.id === messages.at(-1)?.id &&
+                        i === message.parts.length - 1;
+                      const metadata = message.metadata as
+                        | { traceId?: string }
+                        | undefined;
+                      const traceId = metadata?.traceId;
+                      const currentFeedback = feedbackByMessage[message.id];
+                      const isSubmitting = pendingFeedback[message.id] ?? false;
+                      const handleFeedback = (rating: "up" | "down") =>
+                        submitHelpfulness(message.id, traceId, rating, part.text);
+
                       return (
                         <Fragment key={`${message.id}-${i}`}>
                           <Message from={message.role}>
@@ -148,27 +216,59 @@ export default function Chat() {
                               <MessageResponse>{part.text}</MessageResponse>
                             </MessageContent>
                           </Message>
-                          {message.role === "assistant" &&
-                            i === messages.length - 1 && (
-                              <MessageActions className="mt-2">
-                                <MessageAction
-                                  onClick={() => regenerate()}
-                                  label="Retry"
-                                >
-                                  <RefreshCcwIcon className="size-3" />
-                                </MessageAction>
-                                <MessageAction
-                                  onClick={() =>
-                                    navigator.clipboard.writeText(part.text)
-                                  }
-                                  label="Copy"
-                                >
-                                  <CopyIcon className="size-3" />
-                                </MessageAction>
-                              </MessageActions>
-                            )}
+                          {isLatestAssistant && (
+                            <MessageActions className="mt-2">
+                              <MessageAction
+                                onClick={() => regenerate()}
+                                label="Retry"
+                              >
+                                <RefreshCcwIcon className="size-3" />
+                              </MessageAction>
+                              <MessageAction
+                                onClick={() =>
+                                  navigator.clipboard.writeText(part.text)
+                                }
+                                label="Copy"
+                              >
+                                <CopyIcon className="size-3" />
+                              </MessageAction>
+                              <MessageAction
+                                aria-pressed={currentFeedback === "up"}
+                                disabled={isSubmitting}
+                                onClick={() => handleFeedback("up")}
+                                label={
+                                  currentFeedback === "up"
+                                    ? "Marked helpful"
+                                    : "Thumbs Up"
+                                }
+                                variant={
+                                  currentFeedback === "up" ? "default" : "ghost"
+                                }
+                              >
+                                <ThumbsUpIcon className="size-3" />
+                              </MessageAction>
+                              <MessageAction
+                                aria-pressed={currentFeedback === "down"}
+                                disabled={isSubmitting}
+                                onClick={() => handleFeedback("down")}
+                                label={
+                                  currentFeedback === "down"
+                                    ? "Marked not helpful"
+                                    : "Thumbs Down"
+                                }
+                                variant={
+                                  currentFeedback === "down"
+                                    ? "destructive"
+                                    : "ghost"
+                                }
+                              >
+                                <ThumbsDownIcon className="size-3" />
+                              </MessageAction>
+                            </MessageActions>
+                          )}
                         </Fragment>
                       );
+                    }
 
                     case "reasoning":
                       return (

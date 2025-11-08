@@ -1,10 +1,11 @@
 import { convertToModelMessages, streamText, tool, stepCountIs } from "ai";
 import type { UIMessage } from "ai";
-import type { Route } from "./+types/api";
+import type { Route } from "./+types/api.chat";
 import { google } from "@ai-sdk/google";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import {
+  getActiveTraceId,
   observe,
   updateActiveObservation,
   updateActiveTrace,
@@ -119,6 +120,15 @@ const actionImpl = async ({ request }: Route.ActionArgs) => {
       label: "production",
     });
 
+    const traceId = getActiveTraceId();
+    const assistantMetadata =
+      traceId || sessionId
+        ? {
+            ...(traceId ? { traceId } : {}),
+            ...(sessionId ? { sessionId } : {}),
+          }
+        : undefined;
+
     const result = streamText({
       model: model === "gpt-5" ? openai("gpt-4o") : google(model),
       messages: convertToModelMessages(messages),
@@ -222,6 +232,11 @@ const actionImpl = async ({ request }: Route.ActionArgs) => {
     return result.toUIMessageStreamResponse({
       sendSources: true,
       sendReasoning: true,
+      ...(assistantMetadata
+        ? {
+            messageMetadata: () => assistantMetadata,
+          }
+        : {}),
     });
   } catch (error) {
     const errorMessage =
