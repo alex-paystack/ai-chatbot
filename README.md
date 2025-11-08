@@ -82,6 +82,15 @@ Make sure to deploy the output of `npm run build`
 
 This template comes with [Tailwind CSS](https://tailwindcss.com/) already configured for a simple default starting experience. You can use whatever CSS framework you prefer.
 
+## Langfuse tracing
+
+Tracing for the chat API is wired up through Langfuse and OpenTelemetry.
+
+1. Set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and `LANGFUSE_BASEURL` (plus optional `LANGFUSE_SERVICE_NAME`) in `.env`. Without these values the instrumentation remains dormant.
+2. The bootstrap file at `app/lib/langfuse.server.ts` registers a `NodeTracerProvider` together with the Langfuse span processor so traces from every server render and tool call are exported automatically.
+3. The server action inside `app/routes/api.ts` is wrapped with `@langfuse/tracing`'s `observe` helper. It captures each user prompt, the streamed assistant response, tool usage, and error cases while propagating metadata such as the chosen model and web search preference.
+4. When running in short-lived environments, the stream finalizers flush any buffered spans to Langfuse before closing the HTTP response to avoid losing telemetry.
+
 ---
 
 Built with ❤️ using React Router.

@@ -85,7 +85,6 @@ export default function Chat() {
   const [model, setModel] = useState<string>(models[0].value);
   const [webSearch, setWebSearch] = useState(false);
   const { messages, sendMessage, status, regenerate } = useChat();
-  console.log(messages);
 
   const handleSubmit = (message: PromptInputMessage) => {
     const hasText = Boolean(message.text);
@@ -141,15 +140,7 @@ export default function Chat() {
                   )}
                 {message.parts.map((part, i) => {
                   switch (part.type) {
-                    case "text": {
-                      if (
-                        message.parts.find(
-                          (p) => p.type === "tool-getTransactions"
-                        )
-                      ) {
-                        return null;
-                      }
-
+                    case "text":
                       return (
                         <Fragment key={`${message.id}-${i}`}>
                           <Message from={message.role}>
@@ -178,7 +169,7 @@ export default function Chat() {
                             )}
                         </Fragment>
                       );
-                    }
+
                     case "reasoning":
                       return (
                         <Reasoning

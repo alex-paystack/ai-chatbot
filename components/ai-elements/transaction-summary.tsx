@@ -108,7 +108,7 @@ export const TransactionSummaryCard = ({
   const showEmptyState = !isLoading && total === 0;
 
   return (
-    <Card className={cn("w-full", className)} {...props}>
+    <Card className={cn("w-full m-3", className)} {...props}>
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-1">
