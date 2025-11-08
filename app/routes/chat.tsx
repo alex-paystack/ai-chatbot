@@ -33,6 +33,10 @@ import {
   PromptInputFooter,
   PromptInputTools,
 } from "../../components/ai-elements/prompt-input";
+import {
+  Suggestion,
+  Suggestions,
+} from "../../components/ai-elements/suggestion";
 import { Fragment, useCallback, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import {
@@ -73,6 +77,10 @@ export function meta({}: Route.MetaArgs) {
 
 const models = [
   {
+    name: "GPT 5 Mini",
+    value: "gpt-5-mini",
+  },
+  {
     name: "Gemini 2.5 Flash",
     value: "gemini-2.5-flash",
   },
@@ -80,23 +88,34 @@ const models = [
     name: "Gemini 2.5 Pro",
     value: "gemini-2.5-pro",
   },
-  {
-    name: "GPT 5",
-    value: "gpt-5",
-  },
 ];
+
+const suggestions = ["Analyse my transactions for the last 30 days"];
 
 export default function Chat() {
   const [input, setInput] = useState("");
   const [model, setModel] = useState<string>(models[0].value);
   const [webSearch, setWebSearch] = useState(false);
-  const { messages, sendMessage, status, regenerate } = useChat();
+  const { messages, sendMessage, status, regenerate, error } = useChat();
   const [feedbackByMessage, setFeedbackByMessage] = useState<
     Record<string, "up" | "down">
   >({});
-  const [pendingFeedback, setPendingFeedback] = useState<Record<string, boolean>>(
-    {}
-  );
+  const [pendingFeedback, setPendingFeedback] = useState<
+    Record<string, boolean>
+  >({});
+
+  const handleSuggestionClick = (suggestion: string) => {
+    sendMessage({
+      text: suggestion,
+    });
+  };
+
+  const latestMessage = messages.at(-1);
+  const isAwaitingAssistantChunk =
+    status === "streaming" &&
+    latestMessage?.role === "assistant" &&
+    latestMessage.parts.length === 0;
+  const showLoader = status === "submitted" || isAwaitingAssistantChunk;
 
   const submitHelpfulness = useCallback(
     async (
@@ -207,7 +226,12 @@ export default function Chat() {
                       const currentFeedback = feedbackByMessage[message.id];
                       const isSubmitting = pendingFeedback[message.id] ?? false;
                       const handleFeedback = (rating: "up" | "down") =>
-                        submitHelpfulness(message.id, traceId, rating, part.text);
+                        submitHelpfulness(
+                          message.id,
+                          traceId,
+                          rating,
+                          part.text
+                        );
 
                       return (
                         <Fragment key={`${message.id}-${i}`}>
@@ -281,8 +305,12 @@ export default function Chat() {
                             message.id === messages.at(-1)?.id
                           }
                         >
-                          <ReasoningTrigger />
-                          <ReasoningContent>{part.text}</ReasoningContent>
+                          {part.text && (
+                            <>
+                              <ReasoningTrigger />
+                              <ReasoningContent>{part.text}</ReasoningContent>
+                            </>
+                          )}
                         </Reasoning>
                       );
                     case "tool-getTransactions": {
@@ -294,11 +322,14 @@ export default function Chat() {
                         );
                       }
 
-                      const hasOutput = part.state === "output-available";
-                      const transactionData = hasOutput
+                      const isFinalOutput =
+                        part.state === "output-available" && !part.preliminary;
+                      const transactionData = isFinalOutput
                         ? normalizeTransactionsFromOutput(part.output)
                         : { transactions: [], meta: {} };
-                      const isLoading = part.state !== "output-available";
+                      const isLoading =
+                        part.state !== "output-available" ||
+                        Boolean(part.preliminary);
 
                       return (
                         <TransactionSummaryCard
@@ -314,66 +345,84 @@ export default function Chat() {
                 })}
               </div>
             ))}
-            {status === "submitted" && <Loader />}
+            {showLoader && <Loader />}
           </ConversationContent>
           <ConversationScrollButton />
         </Conversation>
-        <PromptInput
-          onSubmit={handleSubmit}
-          className="mt-4"
-          globalDrop
-          multiple
-        >
-          <PromptInputHeader>
-            <PromptInputAttachments>
-              {(attachment) => <PromptInputAttachment data={attachment} />}
-            </PromptInputAttachments>
-          </PromptInputHeader>
-          <PromptInputBody>
-            <PromptInputTextarea
-              onChange={(e) => setInput(e.target.value)}
-              value={input}
-            />
-          </PromptInputBody>
-          <PromptInputFooter>
-            <PromptInputTools>
-              <PromptInputActionMenu>
-                <PromptInputActionMenuTrigger />
-                <PromptInputActionMenuContent>
-                  <PromptInputActionAddAttachments />
-                </PromptInputActionMenuContent>
-              </PromptInputActionMenu>
-              <PromptInputButton
-                variant={webSearch ? "default" : "ghost"}
-                onClick={() => setWebSearch(!webSearch)}
-              >
-                <GlobeIcon size={16} />
-                <span>Search</span>
-              </PromptInputButton>
-              <PromptInputSelect
-                onValueChange={(value) => {
-                  setModel(value);
-                }}
-                value={model}
-              >
-                <PromptInputSelectTrigger>
-                  <PromptInputSelectValue />
-                </PromptInputSelectTrigger>
-                <PromptInputSelectContent>
-                  {models.map((model) => (
-                    <PromptInputSelectItem
-                      key={model.value}
-                      value={model.value}
-                    >
-                      {model.name}
-                    </PromptInputSelectItem>
-                  ))}
-                </PromptInputSelectContent>
-              </PromptInputSelect>
-            </PromptInputTools>
-            <PromptInputSubmit disabled={!input && !status} status={status} />
-          </PromptInputFooter>
-        </PromptInput>
+        <div className="w-full px-4 pb-4">
+          {messages.length === 0 && (
+            <Suggestions className="px-4">
+              {suggestions.map((suggestion) => (
+                <Suggestion
+                  key={suggestion}
+                  onClick={() => handleSuggestionClick(suggestion)}
+                  suggestion={suggestion}
+                />
+              ))}
+            </Suggestions>
+          )}
+          <div className="w-full px-4 pb-4">
+            <PromptInput
+              onSubmit={handleSubmit}
+              className="mt-4"
+              globalDrop
+              multiple
+            >
+              <PromptInputHeader>
+                <PromptInputAttachments>
+                  {(attachment) => <PromptInputAttachment data={attachment} />}
+                </PromptInputAttachments>
+              </PromptInputHeader>
+              <PromptInputBody>
+                <PromptInputTextarea
+                  onChange={(e) => setInput(e.target.value)}
+                  value={input}
+                />
+              </PromptInputBody>
+              <PromptInputFooter>
+                <PromptInputTools>
+                  <PromptInputActionMenu>
+                    <PromptInputActionMenuTrigger />
+                    <PromptInputActionMenuContent>
+                      <PromptInputActionAddAttachments />
+                    </PromptInputActionMenuContent>
+                  </PromptInputActionMenu>
+                  <PromptInputButton
+                    variant={webSearch ? "default" : "ghost"}
+                    onClick={() => setWebSearch(!webSearch)}
+                  >
+                    <GlobeIcon size={16} />
+                    <span>Search</span>
+                  </PromptInputButton>
+                  <PromptInputSelect
+                    onValueChange={(value) => {
+                      setModel(value);
+                    }}
+                    value={model}
+                  >
+                    <PromptInputSelectTrigger>
+                      <PromptInputSelectValue />
+                    </PromptInputSelectTrigger>
+                    <PromptInputSelectContent>
+                      {models.map((model) => (
+                        <PromptInputSelectItem
+                          key={model.value}
+                          value={model.value}
+                        >
+                          {model.name}
+                        </PromptInputSelectItem>
+                      ))}
+                    </PromptInputSelectContent>
+                  </PromptInputSelect>
+                </PromptInputTools>
+                <PromptInputSubmit
+                  disabled={!input && !status}
+                  status={status}
+                />
+              </PromptInputFooter>
+            </PromptInput>
+          </div>
+        </div>
       </div>
     </div>
   );

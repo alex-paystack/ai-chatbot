@@ -85,7 +85,7 @@ const actionImpl = async ({ request }: Route.ActionArgs) => {
   try {
     const {
       messages,
-      model,
+      model = "gemini-2.5-flash",
       webSearch,
     }: {
       messages: UIMessage[];
@@ -120,6 +120,10 @@ const actionImpl = async ({ request }: Route.ActionArgs) => {
       label: "production",
     });
 
+    const compiledPrompt = prompt.compile({
+      current_date: Date.now().toString(),
+    });
+
     const traceId = getActiveTraceId();
     const assistantMetadata =
       traceId || sessionId
@@ -130,10 +134,15 @@ const actionImpl = async ({ request }: Route.ActionArgs) => {
         : undefined;
 
     const result = streamText({
-      model: model === "gpt-5" ? openai("gpt-4o") : google(model),
+      model: model === "gpt-5-mini" ? openai(model) : google(model),
       messages: convertToModelMessages(messages),
-      system: prompt.prompt,
+      system: compiledPrompt,
       stopWhen: stepCountIs(10),
+      providerOptions: {
+        openai: {
+          reasoningSummary: 'auto',
+        },
+      },
       experimental_telemetry: {
         isEnabled: true,
         functionId: "chat-api",
@@ -174,7 +183,17 @@ const actionImpl = async ({ request }: Route.ActionArgs) => {
               total_volume: z.number(),
             }),
           }),
-          execute: async ({ startDate, endDate }) => {
+          execute: async function* ({ startDate, endDate }) {
+            yield {
+              status: true,
+              message: "Fetching transactions…",
+              data: [],
+              meta: {
+                total: 0,
+                total_volume: 0,
+              },
+            } as const;
+
             const response = await fetch(
               `https://studio-api.paystack.co/transaction?reduced_fields=true&from=${startDate}&to=${endDate}`,
               {
@@ -188,7 +207,8 @@ const actionImpl = async ({ request }: Route.ActionArgs) => {
             if (!response.ok) {
               throw new Error(payload.message);
             }
-            return payload;
+
+            yield payload;
           },
         }),
       },
