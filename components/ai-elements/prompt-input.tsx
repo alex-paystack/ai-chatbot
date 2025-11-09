@@ -26,6 +26,7 @@ import {
   InputGroupAddon,
   InputGroupButton,
   InputGroupTextarea,
+  InputGroupInput,
 } from "~/components/ui/input-group";
 import {
   Select,
@@ -429,6 +430,7 @@ export type PromptInputProps = Omit<
   // Minimal constraints
   maxFiles?: number;
   maxFileSize?: number; // bytes
+  inputType?: "textarea" | "input";
   onError?: (err: {
     code: "max_files" | "max_file_size" | "accept";
     message: string;
@@ -447,6 +449,7 @@ export const PromptInput = ({
   syncHiddenInput,
   maxFiles,
   maxFileSize,
+  inputType = "textarea",
   onError,
   onSubmit,
   children,
@@ -753,7 +756,11 @@ export const PromptInput = ({
         onSubmit={handleSubmit}
         {...props}
       >
-        <InputGroup>{children}</InputGroup>
+        <InputGroup
+          className={cn(inputType === "input" && "min-h-12 rounded-full")}
+        >
+          {children}
+        </InputGroup>
       </form>
     </>
   );
@@ -779,6 +786,105 @@ export const PromptInputBody = ({
 export type PromptInputTextareaProps = ComponentProps<
   typeof InputGroupTextarea
 >;
+
+export type PromptInputInputProps = ComponentProps<typeof InputGroupInput>;
+
+export const PromptInputInput = ({
+  onChange,
+  className,
+  placeholder = "What would you like to know?",
+  ...props
+}: PromptInputInputProps) => {
+  const controller = useOptionalPromptInputController();
+  const attachments = usePromptInputAttachments();
+  const [isComposing, setIsComposing] = useState(false);
+
+  const handleKeyDown: KeyboardEventHandler<HTMLInputElement> = (e) => {
+    if (e.key === "Enter") {
+      if (isComposing || e.nativeEvent.isComposing) {
+        return;
+      }
+      if (e.shiftKey) {
+        return;
+      }
+      e.preventDefault();
+
+      // Check if the submit button is disabled before submitting
+      const form = e.currentTarget.form;
+      const submitButton = form?.querySelector(
+        'button[type="submit"]'
+      ) as HTMLButtonElement | null;
+      if (submitButton?.disabled) {
+        return;
+      }
+
+      form?.requestSubmit();
+    }
+
+    // Remove last attachment when Backspace is pressed and textarea is empty
+    if (
+      e.key === "Backspace" &&
+      e.currentTarget.value === "" &&
+      attachments.files.length > 0
+    ) {
+      e.preventDefault();
+      const lastAttachment = attachments.files.at(-1);
+      if (lastAttachment) {
+        attachments.remove(lastAttachment.id);
+      }
+    }
+  };
+
+  const handlePaste: ClipboardEventHandler<HTMLInputElement> = (event) => {
+    const items = event.clipboardData?.items;
+
+    if (!items) {
+      return;
+    }
+
+    const files: File[] = [];
+
+    for (const item of items) {
+      if (item.kind === "file") {
+        const file = item.getAsFile();
+        if (file) {
+          files.push(file);
+        }
+      }
+    }
+
+    if (files.length > 0) {
+      event.preventDefault();
+      attachments.add(files);
+    }
+  };
+
+  const controlledProps = controller
+    ? {
+        value: controller.textInput.value,
+        onChange: (e: ChangeEvent<HTMLInputElement>) => {
+          controller.textInput.setInput(e.currentTarget.value);
+          onChange?.(e);
+        },
+      }
+    : {
+        onChange,
+      };
+
+  return (
+    <InputGroupInput
+      className={cn(className)}
+      name="message"
+      onCompositionEnd={() => setIsComposing(false)}
+      onCompositionStart={() => setIsComposing(true)}
+      onKeyDown={handleKeyDown}
+      onPaste={handlePaste}
+      placeholder={placeholder}
+      {...props}
+      {...controlledProps}
+    />
+  );
+};
 
 export const PromptInputTextarea = ({
   onChange,

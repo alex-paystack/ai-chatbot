@@ -13,10 +13,22 @@ import {
 import { trace } from "@opentelemetry/api";
 import { LangfuseClient } from "@langfuse/client";
 import { langfuseSpanProcessor } from "~/lib/langfuse.server";
+import { fetchTransactions } from "~/lib/transactions.server";
+import {
+  parseAssistantPageContext,
+  summarizeAssistantPageContext,
+} from "~/lib/assistant-context";
 
 const langfuse = new LangfuseClient();
 
 type TextPart = { type: "text"; text: string };
+
+type ChatRequestPayload = {
+  messages: UIMessage[];
+  model?: string;
+  webSearch?: boolean;
+  pageContext?: unknown;
+};
 
 const isTextPart = (part: unknown): part is TextPart =>
   typeof part === "object" &&
@@ -86,12 +98,11 @@ const actionImpl = async ({ request }: Route.ActionArgs) => {
     const {
       messages,
       model = "gemini-2.5-flash",
-      webSearch,
-    }: {
-      messages: UIMessage[];
-      model: string;
-      webSearch: boolean;
-    } = await request.json();
+      webSearch = false,
+      pageContext: pageContextInput,
+    }: ChatRequestPayload = await request.json();
+    const pageContext = parseAssistantPageContext(pageContextInput);
+    const pageContextSummary = summarizeAssistantPageContext(pageContext);
 
     const lastUserMessage = [...messages]
       .reverse()
@@ -103,6 +114,7 @@ const actionImpl = async ({ request }: Route.ActionArgs) => {
       input: lastUserText,
       metadata: {
         model,
+        ...(pageContext ? { pageId: pageContext.pageId } : {}),
       },
     });
 
@@ -113,6 +125,15 @@ const actionImpl = async ({ request }: Route.ActionArgs) => {
       metadata: {
         model,
         webSearch,
+        ...(pageContext
+          ? {
+              pageContext: {
+                pageId: pageContext.pageId,
+                title: pageContext.title,
+                filters: pageContext.filters,
+              },
+            }
+          : {}),
       },
     });
 
@@ -121,7 +142,8 @@ const actionImpl = async ({ request }: Route.ActionArgs) => {
     });
 
     const compiledPrompt = prompt.compile({
-      current_date: Date.now().toString(),
+      current_date: new Date().toLocaleString(),
+      page_context: pageContextSummary ?? "",
     });
 
     const traceId = getActiveTraceId();
@@ -134,13 +156,13 @@ const actionImpl = async ({ request }: Route.ActionArgs) => {
         : undefined;
 
     const result = streamText({
-      model: model === "gpt-5-mini" ? openai(model) : google(model),
+      model: model === "gpt-5-mini" ? openai("gpt-5-codex") : google(model),
       messages: convertToModelMessages(messages),
       system: compiledPrompt,
       stopWhen: stepCountIs(10),
       providerOptions: {
         openai: {
-          reasoningSummary: 'auto',
+          reasoningSummary: "auto",
         },
       },
       experimental_telemetry: {
@@ -150,6 +172,7 @@ const actionImpl = async ({ request }: Route.ActionArgs) => {
           model,
           webSearch,
           langfusePrompt: prompt.toJSON(),
+          ...(pageContextSummary ? { pageContextSummary } : {}),
         },
       },
       tools: {
@@ -178,10 +201,12 @@ const actionImpl = async ({ request }: Route.ActionArgs) => {
                 }),
               })
             ),
-            meta: z.object({
-              total: z.number(),
-              total_volume: z.number(),
-            }),
+            meta: z
+              .object({
+                total: z.number(),
+                total_volume: z.number(),
+              })
+              .passthrough(),
           }),
           execute: async function* ({ startDate, endDate }) {
             yield {
@@ -194,21 +219,13 @@ const actionImpl = async ({ request }: Route.ActionArgs) => {
               },
             } as const;
 
-            const response = await fetch(
-              `https://studio-api.paystack.co/transaction?reduced_fields=true&from=${startDate}&to=${endDate}`,
-              {
-                headers: {
-                  Authorization: `Bearer ${process.env.PAYSTACK_JWT}`,
-                  "jwt-auth": "true",
-                },
-              }
-            );
-            const payload = await response.json();
-            if (!response.ok) {
-              throw new Error(payload.message);
-            }
+            const { raw } = await fetchTransactions({
+              startDate,
+              endDate,
+              perPage: 50,
+            });
 
-            yield payload;
+            yield raw;
           },
         }),
       },
