@@ -1,4 +1,11 @@
-import { Fragment, useCallback, useState, type ChangeEvent } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
 import { useChat } from "@ai-sdk/react";
 import type { FileUIPart } from "ai";
 import {
@@ -34,6 +41,7 @@ import {
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
+  PromptInputSpeechButton,
 } from "../../../components/ai-elements/prompt-input";
 import type { PromptInputMessage } from "../../../components/ai-elements/prompt-input";
 import {
@@ -58,7 +66,7 @@ import {
   ReasoningContent,
   ReasoningTrigger,
 } from "../../../components/ai-elements/reasoning";
-import { Loader } from "../../../components/ai-elements/loader";
+import { Shimmer } from "../../../components/ai-elements/shimmer";
 import { TransactionSummaryCard } from "../../../components/ai-elements/transaction-summary";
 import { normalizeTransactionsFromOutput } from "~/lib/transactions";
 import { cn } from "~/lib/utils";
@@ -83,6 +91,15 @@ const models = [
 
 export const chatModels = models;
 
+const loadingMessages = [
+  "Doodling...",
+  "Germinating...",
+  "Pondering...",
+  "Dream-weaving...",
+  "Percolating ideas...",
+  "Conspiring with the muses...",
+] as const;
+
 export type ChatPanelVariant = "standalone" | "dock";
 
 export type ChatPanelProps = {
@@ -96,6 +113,31 @@ export type ChatPanelProps = {
 
 const defaultSuggestions = ["Analyse my transactions for the last 30 days"];
 
+const AssistantAvatar = () => (
+  <div className="-mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-background ring-1 ring-border">
+    <svg
+      aria-hidden="true"
+      height="14"
+      width="14"
+      viewBox="0 0 16 16"
+      style={{ color: "currentColor" }}
+    >
+      <path
+        d="M2.5 0.5V0H3.5V0.5C3.5 1.60457 4.39543 2.5 5.5 2.5H6V3V3.5H5.5C4.39543 3.5 3.5 4.39543 3.5 5.5V6H3H2.5V5.5C2.5 4.39543 1.60457 3.5 0.5 3.5H0V3V2.5H0.5C1.60457 2.5 2.5 1.60457 2.5 0.5Z"
+        fill="currentColor"
+      />
+      <path
+        d="M14.5 4.5V5H13.5V4.5C13.5 3.94772 13.0523 3.5 12.5 3.5H12V3V2.5H12.5C13.0523 2.5 13.5 2.05228 13.5 1.5V1H14H14.5V1.5C14.5 2.05228 14.9477 2.5 15.5 2.5H16V3V3.5H15.5C14.9477 3.5 14.5 3.94772 14.5 4.5Z"
+        fill="currentColor"
+      />
+      <path
+        d="M8.40706 4.92939L8.5 4H9.5L9.59294 4.92939C9.82973 7.29734 11.7027 9.17027 14.0706 9.40706L15 9.5V10.5L14.0706 10.5929C11.7027 10.8297 9.82973 12.7027 9.59294 15.0706L9.5 16H8.5L8.40706 15.0706C8.17027 12.7027 6.29734 10.8297 3.92939 10.5929L3 10.5V9.5L3.92939 9.40706C6.29734 9.17027 8.17027 7.29734 8.40706 4.92939Z"
+        fill="currentColor"
+      />
+    </svg>
+  </div>
+);
+
 export function ChatPanel({
   className,
   initialModel = models[0].value,
@@ -108,6 +150,7 @@ export function ChatPanel({
   const [input, setInput] = useState("");
   const [model, setModel] = useState(initialModel);
   const [webSearch, setWebSearch] = useState(initialWebSearch);
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [feedbackByMessage, setFeedbackByMessage] = useState<
     Record<string, "up" | "down">
   >({});
@@ -203,12 +246,38 @@ export function ChatPanel({
     []
   );
 
-  const latestMessage = messages.at(-1);
-  const isAwaitingAssistantChunk =
-    status === "streaming" &&
-    latestMessage?.role === "assistant" &&
-    latestMessage.parts.length === 0;
-  const showLoader = status === "submitted" || isAwaitingAssistantChunk;
+  const latestAssistantMessage = messages
+    .slice()
+    .reverse()
+    .find((message) => message.role === "assistant");
+
+  const assistantHasRenderableContent = Boolean(
+    latestAssistantMessage?.parts.some(
+      (part) =>
+        part.type === "text" ||
+        (part.type === "reasoning" && Boolean(part.text)) ||
+        part.type === "tool-getTransactions"
+    )
+  );
+
+  const isAwaitingAssistantContent =
+    status === "streaming" && !assistantHasRenderableContent;
+  const showLoader = status === "submitted" || isAwaitingAssistantContent;
+
+  useEffect(() => {
+    if (!showLoader) {
+      return;
+    }
+
+    // Kick once so each loading session starts with a fresh thought.
+    setLoadingMessageIndex((prev) => (prev + 1) % loadingMessages.length);
+
+    const intervalId = setInterval(() => {
+      setLoadingMessageIndex((prev) => (prev + 1) % loadingMessages.length);
+    }, 3500);
+
+    return () => clearInterval(intervalId);
+  }, [showLoader]);
 
   const containerClasses = cn(
     "relative size-full",
@@ -219,6 +288,7 @@ export function ChatPanel({
   );
 
   const isDock = variant === "dock";
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   return (
     <div className={containerClasses}>
@@ -258,6 +328,8 @@ export function ChatPanel({
                         message.role === "assistant" &&
                         message.id === messages.at(-1)?.id &&
                         i === message.parts.length - 1;
+                      const shouldShowAssistantAvatar =
+                        message.role === "assistant";
                       const metadata = message.metadata as
                         | { traceId?: string }
                         | undefined;
@@ -274,61 +346,67 @@ export function ChatPanel({
 
                       return (
                         <Fragment key={`${message.id}-${i}`}>
-                          <Message from={message.role}>
+                          <Message
+                            from={message.role}
+                            className={cn(isDock && "max-w-[90%]")}
+                          >
+                            {shouldShowAssistantAvatar && <AssistantAvatar />}
                             <MessageContent>
                               <MessageResponse>{part.text}</MessageResponse>
+                              {isLatestAssistant && (
+                                <MessageActions className="mt-2">
+                                  <MessageAction
+                                    onClick={handleRegenerate}
+                                    label="Retry"
+                                  >
+                                    <RefreshCcwIcon className="size-3" />
+                                  </MessageAction>
+                                  <MessageAction
+                                    onClick={() =>
+                                      navigator.clipboard.writeText(part.text)
+                                    }
+                                    label="Copy"
+                                  >
+                                    <CopyIcon className="size-3" />
+                                  </MessageAction>
+                                  <MessageAction
+                                    aria-pressed={currentFeedback === "up"}
+                                    disabled={isSubmitting}
+                                    onClick={() => handleFeedback("up")}
+                                    label={
+                                      currentFeedback === "up"
+                                        ? "Marked helpful"
+                                        : "Thumbs Up"
+                                    }
+                                    variant={
+                                      currentFeedback === "up"
+                                        ? "default"
+                                        : "ghost"
+                                    }
+                                  >
+                                    <ThumbsUpIcon className="size-3" />
+                                  </MessageAction>
+                                  <MessageAction
+                                    aria-pressed={currentFeedback === "down"}
+                                    disabled={isSubmitting}
+                                    onClick={() => handleFeedback("down")}
+                                    label={
+                                      currentFeedback === "down"
+                                        ? "Marked not helpful"
+                                        : "Thumbs Down"
+                                    }
+                                    variant={
+                                      currentFeedback === "down"
+                                        ? "destructive"
+                                        : "ghost"
+                                    }
+                                  >
+                                    <ThumbsDownIcon className="size-3" />
+                                  </MessageAction>
+                                </MessageActions>
+                              )}
                             </MessageContent>
                           </Message>
-                          {isLatestAssistant && (
-                            <MessageActions className="mt-2">
-                              <MessageAction
-                                onClick={handleRegenerate}
-                                label="Retry"
-                              >
-                                <RefreshCcwIcon className="size-3" />
-                              </MessageAction>
-                              <MessageAction
-                                onClick={() =>
-                                  navigator.clipboard.writeText(part.text)
-                                }
-                                label="Copy"
-                              >
-                                <CopyIcon className="size-3" />
-                              </MessageAction>
-                              <MessageAction
-                                aria-pressed={currentFeedback === "up"}
-                                disabled={isSubmitting}
-                                onClick={() => handleFeedback("up")}
-                                label={
-                                  currentFeedback === "up"
-                                    ? "Marked helpful"
-                                    : "Thumbs Up"
-                                }
-                                variant={
-                                  currentFeedback === "up" ? "default" : "ghost"
-                                }
-                              >
-                                <ThumbsUpIcon className="size-3" />
-                              </MessageAction>
-                              <MessageAction
-                                aria-pressed={currentFeedback === "down"}
-                                disabled={isSubmitting}
-                                onClick={() => handleFeedback("down")}
-                                label={
-                                  currentFeedback === "down"
-                                    ? "Marked not helpful"
-                                    : "Thumbs Down"
-                                }
-                                variant={
-                                  currentFeedback === "down"
-                                    ? "destructive"
-                                    : "ghost"
-                                }
-                              >
-                                <ThumbsDownIcon className="size-3" />
-                              </MessageAction>
-                            </MessageActions>
-                          )}
                         </Fragment>
                       );
                     }
@@ -384,7 +462,16 @@ export function ChatPanel({
                 })}
               </div>
             ))}
-            {showLoader && <Loader />}
+            {showLoader && (
+              <div aria-live="polite" className="px-4 pb-4" role="status">
+                <div className="flex max-w-[80%] items-start gap-3 text-left">
+                  <AssistantAvatar />
+                  <Shimmer duration={1} className="text-sm">
+                    {loadingMessages[loadingMessageIndex]}
+                  </Shimmer>
+                </div>
+              </div>
+            )}
           </ConversationContent>
           <ConversationScrollButton />
         </Conversation>
@@ -436,6 +523,7 @@ export function ChatPanel({
               </PromptInputHeader>
               <PromptInputBody>
                 <PromptInputTextarea
+                  ref={textareaRef}
                   onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
                     setInput(e.target.value)
                   }
@@ -450,6 +538,12 @@ export function ChatPanel({
                       <PromptInputActionAddAttachments />
                     </PromptInputActionMenuContent>
                   </PromptInputActionMenu>
+                  <PromptInputSpeechButton
+                    aria-label="Dictate message"
+                    title="Dictate message"
+                    textareaRef={textareaRef}
+                    onTranscriptionChange={(text) => setInput(text)}
+                  />
                   <PromptInputButton
                     variant={webSearch ? "default" : "ghost"}
                     onClick={() => setWebSearch(!webSearch)}
