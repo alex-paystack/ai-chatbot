@@ -68,6 +68,10 @@ import {
 } from "../../../components/ai-elements/reasoning";
 import { Shimmer } from "../../../components/ai-elements/shimmer";
 import { TransactionSummaryCard } from "../../../components/ai-elements/transaction-summary";
+import {
+  ChartCard,
+  type ChartInputConfig,
+} from "../../../components/ai-elements/chart";
 import { normalizeTransactionsFromOutput } from "~/lib/transactions";
 import { cn } from "~/lib/utils";
 import { useEffectiveAssistantPageContext } from "~/components/assistant/page-assistant-context";
@@ -76,12 +80,12 @@ import { InputGroupAddon } from "~/components/ui/input-group";
 
 const models = [
   {
-    name: "GPT 5 Mini",
-    value: "gpt-5-mini",
-  },
-  {
     name: "Gemini 2.5 Flash",
     value: "gemini-2.5-flash",
+  },
+  {
+    name: "GPT 5 Mini",
+    value: "gpt-5-mini",
   },
   {
     name: "Gemini 2.5 Pro",
@@ -256,7 +260,8 @@ export function ChatPanel({
       (part) =>
         part.type === "text" ||
         (part.type === "reasoning" && Boolean(part.text)) ||
-        part.type === "tool-getTransactions"
+        part.type === "tool-getTransactions" ||
+        part.type === "tool-generateChart"
     )
   );
 
@@ -430,10 +435,23 @@ export function ChatPanel({
                           )}
                         </Reasoning>
                       );
+
                     case "tool-getTransactions": {
+                      // Hide the transaction summary if a chart is being generated
+                      // (the chart provides the visualization the user asked for)
+                      const hasChartInMessage = message.parts.some(
+                        (p) => p.type === "tool-generateChart"
+                      );
+                      if (hasChartInMessage) {
+                        return null;
+                      }
+
                       if (part.errorText) {
                         return (
-                          <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+                          <div
+                            key={`${message.id}-${i}`}
+                            className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive"
+                          >
                             {part.errorText}
                           </div>
                         );
@@ -450,12 +468,57 @@ export function ChatPanel({
 
                       return (
                         <TransactionSummaryCard
+                          key={`${message.id}-${i}`}
                           transactions={transactionData.transactions}
                           meta={transactionData.meta}
                           isLoading={isLoading}
                         />
                       );
                     }
+
+                    case "tool-analyzeAndVisualizeTransactions": {
+                      if (part.errorText) {
+                        return (
+                          <div
+                            key={`${message.id}-${i}`}
+                            className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive"
+                          >
+                            {part.errorText}
+                          </div>
+                        );
+                      }
+
+                      // The chart config comes from the tool's output
+                      const output = part.output as
+                        | { chartConfig?: ChartInputConfig; success?: boolean }
+                        | undefined;
+                      const chartConfig = output?.chartConfig;
+                      console.log(output);
+
+                      const isChartLoading =
+                        !chartConfig ||
+                        part.state !== "output-available" ||
+                        Boolean(part.preliminary);
+
+                      // Show skeleton immediately even if config isn't available yet
+                      const fallbackConfig: ChartInputConfig = {
+                        chartType: "bar",
+                        title: "Loading...",
+                        labels: [],
+                        datasets: [],
+                      };
+
+                      return (
+                        <div style={{ width: "100%", height: "100%" }}>
+                          <ChartCard
+                            key={`${message.id}-${i}`}
+                            config={chartConfig || fallbackConfig}
+                            isLoading={isChartLoading}
+                          />
+                        </div>
+                      );
+                    }
+
                     default:
                       return null;
                   }
@@ -583,6 +646,7 @@ export function ChatPanel({
           {error && (
             <div className="px-4 text-sm text-destructive">
               Something went wrong. Please try again.
+              {JSON.stringify(error, null, 2)}
             </div>
           )}
         </div>

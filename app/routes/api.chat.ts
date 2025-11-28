@@ -13,11 +13,11 @@ import {
 import { trace } from "@opentelemetry/api";
 import { LangfuseClient } from "@langfuse/client";
 import { langfuseSpanProcessor } from "~/lib/langfuse.server";
-import { fetchTransactions } from "~/lib/transactions.server";
 import {
   parseAssistantPageContext,
   summarizeAssistantPageContext,
 } from "~/lib/assistant-context";
+import {  analyzeAndVisualizeTransactions, getTransactions } from "~/lib/tools";
 
 const langfuse = new LangfuseClient();
 
@@ -176,58 +176,8 @@ const actionImpl = async ({ request }: Route.ActionArgs) => {
         },
       },
       tools: {
-        getTransactions: tool({
-          description: "Get the transactions for a specific time period",
-          inputSchema: z.object({
-            startDate: z.string().describe("The start date of the time period"),
-            endDate: z.string().describe("The end date of the time period"),
-          }),
-          outputSchema: z.object({
-            status: z.boolean(),
-            message: z.string(),
-            data: z.array(
-              z.object({
-                id: z.string(),
-                amount: z.number(),
-                status: z.enum(["success", "failed", "abandoned"]),
-                createdAt: z.string(),
-                currency: z.string(),
-                gateway_response: z.string(),
-                customer: z.object({
-                  email: z.string(),
-                  first_name: z.string(),
-                  last_name: z.string(),
-                  phone: z.string(),
-                }),
-              })
-            ),
-            meta: z
-              .object({
-                total: z.number(),
-                total_volume: z.number(),
-              })
-              .passthrough(),
-          }),
-          execute: async function* ({ startDate, endDate }) {
-            yield {
-              status: true,
-              message: "Fetching transactions…",
-              data: [],
-              meta: {
-                total: 0,
-                total_volume: 0,
-              },
-            } as const;
-
-            const { raw } = await fetchTransactions({
-              startDate,
-              endDate,
-              perPage: 50,
-            });
-
-            yield raw;
-          },
-        }),
+        getTransactions,
+        analyzeAndVisualizeTransactions,
       },
       onFinish: async (payload) => {
         const content = payload?.content;

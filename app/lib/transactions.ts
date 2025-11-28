@@ -44,6 +44,7 @@ const paystackCustomerSchema = z
 const paystackTransactionEntrySchema = z
   .object({
     id: z.union([z.string(), z.number()]).optional(),
+    currency: z.string(),
     reference: z.string().optional(),
     amount: z.number().optional(),
     amount_in_minor: z.number().optional(),
