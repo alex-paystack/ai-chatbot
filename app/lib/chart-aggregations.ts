@@ -23,21 +23,30 @@ type ChartData = {
   }[];
 };
 
-// Color palettes
+// Color palettes (using HSL for better compatibility with shadcn charts)
 const STATUS_COLORS = {
-  success: "rgba(34, 197, 94, 0.8)", // green
-  failed: "rgba(239, 68, 68, 0.8)", // red
-  abandoned: "rgba(251, 146, 60, 0.8)", // orange
+  success: "hsl(142, 71%, 45%)", // green
+  failed: "hsl(0, 84%, 60%)", // red
+  abandoned: "hsl(27, 96%, 61%)", // orange
 };
 
 const DEFAULT_CHART_COLORS = [
-  "rgba(99, 102, 241, 0.8)", // indigo
-  "rgba(139, 92, 246, 0.8)", // violet
-  "rgba(236, 72, 153, 0.8)", // pink
-  "rgba(34, 211, 238, 0.8)", // cyan
-  "rgba(52, 211, 153, 0.8)", // emerald
-  "rgba(251, 191, 36, 0.8)", // amber
-  "rgba(248, 113, 113, 0.8)", // red
+  "hsl(239, 84%, 67%)", // indigo
+  "hsl(258, 90%, 66%)", // violet
+  "hsl(330, 81%, 60%)", // pink
+  "hsl(187, 85%, 53%)", // cyan
+  "hsl(160, 61%, 51%)", // emerald
+  "hsl(43, 96%, 56%)", // amber
+  "hsl(0, 91%, 71%)", // red
+];
+
+const COMPARISON_COLORS = [
+  "hsl(239, 84%, 67%)", // indigo - first dataset
+  "hsl(160, 61%, 51%)", // emerald - second dataset
+  "hsl(330, 81%, 60%)", // pink - third dataset
+  "hsl(43, 96%, 56%)", // amber - fourth dataset
+  "hsl(187, 85%, 53%)", // cyan - fifth dataset
+  "hsl(258, 90%, 66%)", // violet - sixth dataset
 ];
 
 /**
@@ -400,6 +409,59 @@ function aggregateByMonth(
 }
 
 /**
+ * Aggregate transaction data comparing multiple metrics for the same time period
+ * This creates multiple datasets (one per metric) on the same chart
+ */
+export function aggregateTransactionDataWithMetricComparison(
+  transactions: Transaction[],
+  analysisType:
+    | "by-day"
+    | "by-hour"
+    | "by-week"
+    | "by-day-of-week"
+    | "by-month",
+  metrics: ("count" | "volume" | "average")[]
+): ChartData {
+  // Get the labels from the first metric
+  const firstMetric = metrics[0];
+  if (!firstMetric) {
+    return { labels: [], datasets: [] };
+  }
+
+  const baseData = aggregateTransactionData(
+    transactions,
+    analysisType,
+    firstMetric
+  );
+
+  // Use the labels from the base data as our x-axis
+  const labels = baseData.labels;
+
+  // Create a dataset for each metric
+  const datasets = metrics.map((metric, index) => {
+    const data = aggregateTransactionData(transactions, analysisType, metric);
+
+    const metricLabels = {
+      count: "Transaction Count",
+      volume: "Volume ($)",
+      average: "Average ($)",
+    };
+
+    return {
+      label: metricLabels[metric],
+      data: data.datasets[0]?.data || [],
+      backgroundColor: [COMPARISON_COLORS[index % COMPARISON_COLORS.length]],
+      borderColor: [COMPARISON_COLORS[index % COMPARISON_COLORS.length]],
+    };
+  });
+
+  return {
+    labels,
+    datasets,
+  };
+}
+
+/**
  * Main aggregation function
  */
 export function aggregateTransactionData(
@@ -468,6 +530,25 @@ export function generateChartTitle(
 }
 
 /**
+ * Generate a descriptive title for metric comparison charts
+ */
+export function generateMetricComparisonChartTitle(
+  analysisType: string,
+  metrics: string[]
+): string {
+  const analysisText =
+    {
+      "by-day": "by Day",
+      "by-hour": "by Hour of Day",
+      "by-week": "by Week",
+      "by-day-of-week": "by Day of Week",
+      "by-month": "by Month",
+    }[analysisType] || "";
+
+  return `Transaction Metrics Comparison ${analysisText}`;
+}
+
+/**
  * Suggest appropriate chart type based on analysis
  */
 export function suggestChartType(
@@ -479,7 +560,7 @@ export function suggestChartType(
     case "by-day":
     case "by-week":
     case "by-month":
-      return "line"; // Good for time series
+      return "area"; // Area charts are great for showing trends over time
     case "by-hour":
     case "by-day-of-week":
       return "bar"; // Good for categorical comparison

@@ -261,7 +261,8 @@ export function ChatPanel({
         part.type === "text" ||
         (part.type === "reasoning" && Boolean(part.text)) ||
         part.type === "tool-getTransactions" ||
-        part.type === "tool-generateChart"
+        part.type === "tool-analyzeAndVisualizeTransactions" ||
+        part.type === "tool-compareTransactionMetrics"
     )
   );
 
@@ -493,7 +494,6 @@ export function ChatPanel({
                         | { chartConfig?: ChartInputConfig; success?: boolean }
                         | undefined;
                       const chartConfig = output?.chartConfig;
-                      console.log(output);
 
                       const isChartLoading =
                         !chartConfig ||
@@ -504,6 +504,48 @@ export function ChatPanel({
                       const fallbackConfig: ChartInputConfig = {
                         chartType: "bar",
                         title: "Loading...",
+                        labels: [],
+                        datasets: [],
+                      };
+
+                      return (
+                        <div style={{ width: "100%", height: "100%" }}>
+                          <ChartCard
+                            key={`${message.id}-${i}`}
+                            config={chartConfig || fallbackConfig}
+                            isLoading={isChartLoading}
+                          />
+                        </div>
+                      );
+                    }
+
+                    case "tool-compareTransactionMetrics": {
+                      if (part.errorText) {
+                        return (
+                          <div
+                            key={`${message.id}-${i}`}
+                            className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive"
+                          >
+                            {part.errorText}
+                          </div>
+                        );
+                      }
+
+                      // The chart config comes from the tool's output
+                      const output = part.output as
+                        | { chartConfig?: ChartInputConfig; success?: boolean }
+                        | undefined;
+                      const chartConfig = output?.chartConfig;
+
+                      const isChartLoading =
+                        !chartConfig ||
+                        part.state !== "output-available" ||
+                        Boolean(part.preliminary);
+
+                      // Show skeleton immediately even if config isn't available yet
+                      const fallbackConfig: ChartInputConfig = {
+                        chartType: "line",
+                        title: "Loading metric comparison...",
                         labels: [],
                         datasets: [],
                       };

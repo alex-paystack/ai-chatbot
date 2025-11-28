@@ -1,19 +1,19 @@
 "use client";
 
 import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  LineElement,
-  PointElement,
-  ArcElement,
-  Filler,
-  Title,
-  Tooltip,
-  Legend,
-} from "chart.js";
-import { Bar, Line, Pie, Doughnut } from "react-chartjs-2";
+  Bar,
+  BarChart,
+  Line,
+  LineChart,
+  Area,
+  AreaChart,
+  Pie,
+  PieChart,
+  Cell,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+} from "recharts";
 import {
   Card,
   CardContent,
@@ -21,22 +21,16 @@ import {
   CardHeader,
   CardTitle,
 } from "~/components/ui/card";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  ChartLegend,
+  ChartLegendContent,
+} from "~/components/ui/chart";
+import type { ChartConfig } from "~/components/ui/chart";
 import { cn } from "~/lib/utils";
 import type { ComponentProps } from "react";
-
-// Register Chart.js components
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  LineElement,
-  PointElement,
-  ArcElement,
-  Filler,
-  Title,
-  Tooltip,
-  Legend
-);
 
 export type ChartType = "bar" | "line" | "pie" | "doughnut" | "area";
 
@@ -60,17 +54,15 @@ export type ChartCardProps = ComponentProps<typeof Card> & {
 };
 
 const COLORS = [
-  "#e76e50",
-  "#2a9d90",
-  "#264653",
-  "#e9c46a",
-  "#f4a462",
-  "#8b5cf6",
-  "#ec4899",
-  "#22c55e",
+  "hsl(12, 76%, 61%)", // #e76e50 - coral
+  "hsl(172, 56%, 38%)", // #2a9d90 - teal
+  "hsl(198, 50%, 23%)", // #264653 - dark blue
+  "hsl(43, 74%, 66%)", // #e9c46a - yellow
+  "hsl(27, 87%, 67%)", // #f4a462 - orange
+  "hsl(258, 90%, 66%)", // #8b5cf6 - purple
+  "hsl(330, 81%, 60%)", // #ec4899 - pink
+  "hsl(142, 71%, 45%)", // #22c55e - green
 ];
-
-const COLORS_ALPHA = COLORS.map((c) => `${c}cc`);
 
 const SkeletonBlock = ({ className }: { className?: string }) => (
   <div className={cn("animate-pulse rounded-md bg-muted/60", className)} />
@@ -107,116 +99,224 @@ const ChartSkeleton = () => (
   </div>
 );
 
-const commonOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: {
-      position: "bottom" as const,
-      labels: {
-        padding: 16,
-        usePointStyle: true,
-        font: { size: 12 },
-      },
-    },
-    tooltip: {
-      backgroundColor: "rgba(0, 0, 0, 0.8)",
-      padding: 12,
-      cornerRadius: 8,
-      titleFont: { size: 13 },
-      bodyFont: { size: 12 },
-    },
-  },
+// Convert hex color to hsl if needed
+const ensureHslColor = (
+  color: string | undefined,
+  fallbackIndex: number
+): string => {
+  if (!color) return COLORS[fallbackIndex % COLORS.length];
+
+  // If already HSL, return as is
+  if (color.startsWith("hsl")) return color;
+
+  // If hex, convert to HSL or use fallback
+  if (color.startsWith("#")) {
+    // For simplicity, just use the fallback color
+    // You could add a full hex-to-hsl converter if needed
+    return COLORS[fallbackIndex % COLORS.length];
+  }
+
+  return color;
 };
 
-const axisOptions = {
-  scales: {
-    x: {
-      grid: { display: false },
-      ticks: { font: { size: 11 } },
-    },
-    y: {
-      beginAtZero: true,
-      grid: { color: "rgba(0, 0, 0, 0.06)" },
-      ticks: { font: { size: 11 } },
-    },
-  },
+// Create a safe CSS variable name from a label
+const createSafeKey = (label: string): string => {
+  return label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+};
+
+// Transform Chart.js format to Recharts format
+const transformData = (config: ChartInputConfig) => {
+  const { labels, datasets, chartType } = config;
+  const isPieOrDoughnut = chartType === "pie" || chartType === "doughnut";
+
+  if (isPieOrDoughnut && datasets.length > 0) {
+    // For pie/doughnut charts, transform to Recharts format
+    const dataset = datasets[0];
+    return labels.map((label, index) => {
+      const color = dataset.backgroundColor?.[index];
+      const safeKey = createSafeKey(label);
+      return {
+        name: safeKey,
+        originalLabel: label,
+        value: dataset.data[index],
+        fill: ensureHslColor(color, index),
+      };
+    });
+  }
+
+  // For bar/line/area charts
+  return labels.map((label, index) => {
+    const dataPoint: Record<string, string | number> = { name: label };
+    datasets.forEach((dataset) => {
+      // Use safe key for data object to match chartConfig
+      const safeKey = createSafeKey(dataset.label);
+      dataPoint[safeKey] = dataset.data[index];
+    });
+    return dataPoint;
+  });
+};
+
+// Create chart config for shadcn charts
+const createChartConfig = (config: ChartInputConfig): ChartConfig => {
+  const { datasets, chartType } = config;
+  const chartConfig: ChartConfig = {};
+
+  if (chartType === "pie" || chartType === "doughnut") {
+    // For pie charts, create config for each label
+    config.labels.forEach((label, index) => {
+      const dataset = datasets[0];
+      const color = dataset.backgroundColor?.[index];
+      const safeKey = createSafeKey(label);
+      chartConfig[safeKey] = {
+        label: label,
+        color: ensureHslColor(color, index),
+      };
+    });
+  } else {
+    // For other charts, create config for each dataset
+    datasets.forEach((dataset, index) => {
+      const color = dataset.borderColor?.[0] || dataset.backgroundColor?.[0];
+      const safeKey = createSafeKey(dataset.label);
+      chartConfig[safeKey] = {
+        label: dataset.label,
+        color: ensureHslColor(color, index),
+      };
+    });
+  }
+
+  return chartConfig;
 };
 
 const ChartRenderer = ({ config }: { config: ChartInputConfig }) => {
-  const { chartType, labels, datasets } = config;
+  const { chartType, datasets } = config;
+  const chartData = transformData(config);
+  const chartConfig = createChartConfig(config);
 
   const isPieOrDoughnut = chartType === "pie" || chartType === "doughnut";
 
-  const chartData = {
-    labels,
-    datasets: datasets.map((dataset, datasetIndex) => {
-      const backgroundColor = dataset.backgroundColor?.length
-        ? dataset.backgroundColor
-        : isPieOrDoughnut
-          ? COLORS_ALPHA.slice(0, labels.length)
-          : [COLORS_ALPHA[datasetIndex % COLORS_ALPHA.length]];
-
-      const borderColor = dataset.borderColor?.length
-        ? dataset.borderColor
-        : isPieOrDoughnut
-          ? COLORS.slice(0, labels.length)
-          : [COLORS[datasetIndex % COLORS.length]];
-
-      const base = {
-        label: dataset.label,
-        data: dataset.data,
-        backgroundColor,
-        borderColor,
-        borderWidth: 2,
-      };
-
-      if (chartType === "area") {
-        return { ...base, fill: true, tension: 0.4 };
-      }
-      if (chartType === "line") {
-        return { ...base, fill: false, tension: 0.3, pointRadius: 4, pointHoverRadius: 6 };
-      }
-      if (chartType === "bar") {
-        return { ...base, borderRadius: 4 };
-      }
-      return base;
-    }),
-  };
-
-  switch (chartType) {
-    case "bar":
-      return (
-        <Bar
-          data={chartData}
-          options={{ ...commonOptions, ...axisOptions }}
-        />
-      );
-    case "line":
-    case "area":
-      return (
-        <Line
-          data={chartData}
-          options={{ ...commonOptions, ...axisOptions }}
-        />
-      );
-    case "pie":
-      return (
-        <Pie
-          data={chartData}
-          options={commonOptions}
-        />
-      );
-    case "doughnut":
-      return (
-        <Doughnut
-          data={chartData}
-          options={commonOptions}
-        />
-      );
-    default:
-      return null;
+  if (isPieOrDoughnut) {
+    return (
+      <ChartContainer config={chartConfig} className="h-full w-full">
+        <PieChart>
+          <ChartTooltip
+            cursor={false}
+            content={<ChartTooltipContent hideLabel />}
+          />
+          <Pie
+            data={chartData}
+            dataKey="value"
+            nameKey="name"
+            innerRadius={chartType === "doughnut" ? "60%" : 0}
+            strokeWidth={2}
+          >
+            {chartData.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={String(entry.fill)} />
+            ))}
+          </Pie>
+          <ChartLegend content={<ChartLegendContent nameKey="name" />} />
+        </PieChart>
+      </ChartContainer>
+    );
   }
+
+  if (chartType === "bar") {
+    return (
+      <ChartContainer config={chartConfig} className="h-full w-full">
+        <BarChart data={chartData}>
+          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+          <XAxis
+            dataKey="name"
+            tickLine={false}
+            tickMargin={10}
+            axisLine={false}
+          />
+          <YAxis tickLine={false} axisLine={false} tickMargin={10} />
+          <ChartTooltip content={<ChartTooltipContent />} />
+          <ChartLegend content={<ChartLegendContent />} />
+          {datasets.map((dataset) => {
+            const safeKey = createSafeKey(dataset.label);
+            return (
+              <Bar
+                key={dataset.label}
+                dataKey={safeKey}
+                fill={`var(--color-${safeKey})`}
+                radius={[4, 4, 0, 0]}
+              />
+            );
+          })}
+        </BarChart>
+      </ChartContainer>
+    );
+  }
+
+  // Area charts
+  if (chartType === "area") {
+    return (
+      <ChartContainer config={chartConfig} className="h-full w-full">
+        <AreaChart data={chartData}>
+          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+          <XAxis
+            dataKey="name"
+            tickLine={false}
+            tickMargin={10}
+            axisLine={false}
+          />
+          <YAxis tickLine={false} axisLine={false} tickMargin={10} />
+          <ChartTooltip content={<ChartTooltipContent />} />
+          <ChartLegend content={<ChartLegendContent />} />
+          {datasets.map((dataset) => {
+            const safeKey = createSafeKey(dataset.label);
+            return (
+              <Area
+                key={dataset.label}
+                type="monotone"
+                dataKey={safeKey}
+                stroke={`var(--color-${safeKey})`}
+                fill={`var(--color-${safeKey})`}
+                fillOpacity={0.2}
+                strokeWidth={2}
+              />
+            );
+          })}
+        </AreaChart>
+      </ChartContainer>
+    );
+  }
+
+  // Line charts (default fallback)
+  return (
+    <ChartContainer config={chartConfig} className="h-full w-full">
+      <LineChart data={chartData}>
+        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+        <XAxis
+          dataKey="name"
+          tickLine={false}
+          tickMargin={10}
+          axisLine={false}
+        />
+        <YAxis tickLine={false} axisLine={false} tickMargin={10} />
+        <ChartTooltip content={<ChartTooltipContent />} />
+        <ChartLegend content={<ChartLegendContent />} />
+        {datasets.map((dataset) => {
+          const safeKey = createSafeKey(dataset.label);
+          return (
+            <Line
+              key={dataset.label}
+              type="monotone"
+              dataKey={safeKey}
+              stroke={`var(--color-${safeKey})`}
+              strokeWidth={2}
+              dot={{ r: 4 }}
+              activeDot={{ r: 6 }}
+            />
+          );
+        })}
+      </LineChart>
+    </ChartContainer>
+  );
 };
 
 export const ChartCard = ({
@@ -243,7 +343,11 @@ export const ChartCard = ({
             {isLoading ? <SkeletonBlock className="h-5 w-48" /> : title}
           </CardTitle>
           <CardDescription>
-            {isLoading ? <SkeletonBlock className="h-4 w-32" /> : chartTypeLabel}
+            {isLoading ? (
+              <SkeletonBlock className="h-4 w-32" />
+            ) : (
+              chartTypeLabel
+            )}
           </CardDescription>
         </div>
       </CardHeader>

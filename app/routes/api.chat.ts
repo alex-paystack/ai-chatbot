@@ -17,7 +17,11 @@ import {
   parseAssistantPageContext,
   summarizeAssistantPageContext,
 } from "~/lib/assistant-context";
-import {  analyzeAndVisualizeTransactions, getTransactions } from "~/lib/tools";
+import {
+  analyzeAndVisualizeTransactions,
+  compareTransactionMetrics,
+  getTransactions,
+} from "~/lib/tools";
 
 const langfuse = new LangfuseClient();
 
@@ -178,6 +182,7 @@ const actionImpl = async ({ request }: Route.ActionArgs) => {
       tools: {
         getTransactions,
         analyzeAndVisualizeTransactions,
+        compareTransactionMetrics,
       },
       onFinish: async (payload) => {
         const content = payload?.content;
