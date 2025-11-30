@@ -1,9 +1,6 @@
-import { convertToModelMessages, streamText, tool, stepCountIs } from "ai";
+import { createAgentUIStreamResponse } from "ai";
 import type { UIMessage } from "ai";
 import type { Route } from "./+types/api.chat";
-import { google } from "@ai-sdk/google";
-import { openai } from "@ai-sdk/openai";
-import { z } from "zod";
 import {
   getActiveTraceId,
   observe,
@@ -17,84 +14,16 @@ import {
   parseAssistantPageContext,
   summarizeAssistantPageContext,
 } from "~/lib/assistant-context";
-import {
-  analyzeAndVisualizeTransactions,
-  compareTransactionMetrics,
-  getTransactions,
-} from "~/lib/tools";
+
+import { agent, toTextContent } from "~/lib/agent";
 
 const langfuse = new LangfuseClient();
-
-type TextPart = { type: "text"; text: string };
 
 type ChatRequestPayload = {
   messages: UIMessage[];
   model?: string;
   webSearch?: boolean;
   pageContext?: unknown;
-};
-
-const isTextPart = (part: unknown): part is TextPart =>
-  typeof part === "object" &&
-  part !== null &&
-  "type" in part &&
-  (part as { type?: unknown }).type === "text" &&
-  typeof (part as { text?: unknown }).text === "string";
-
-const joinTextFromParts = (parts?: unknown[]): string | undefined => {
-  if (!parts?.length) {
-    return undefined;
-  }
-
-  const text = parts
-    .filter(isTextPart)
-    .map((part) => part.text)
-    .join("\n")
-    .trim();
-
-  return text.length > 0 ? text : undefined;
-};
-
-const toTextContent = (message?: UIMessage) => {
-  if (!message) return undefined;
-  const asAny = message as UIMessage & {
-    content?: unknown;
-    parts?: { type: string; text?: string }[];
-  };
-
-  const parts = Array.isArray(asAny.parts)
-    ? (asAny.parts as unknown[])
-    : Array.isArray(asAny.content)
-      ? (asAny.content as unknown[])
-      : undefined;
-
-  const textFromParts = joinTextFromParts(parts);
-  if (textFromParts) {
-    return textFromParts;
-  }
-
-  if (typeof asAny.content === "string") {
-    const trimmed = asAny.content.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
-  }
-
-  return undefined;
-};
-
-const toTextFromContent = (content: unknown): string | undefined => {
-  if (Array.isArray(content)) {
-    const text = joinTextFromParts(content as unknown[]);
-    if (text) {
-      return text;
-    }
-  }
-
-  if (typeof content === "string") {
-    const trimmed = content.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
-  }
-
-  return undefined;
 };
 
 const actionImpl = async ({ request }: Route.ActionArgs) => {
@@ -141,7 +70,7 @@ const actionImpl = async ({ request }: Route.ActionArgs) => {
       },
     });
 
-    const prompt = await langfuse.prompt.get("System prompt", {
+    const prompt = await langfuse.prompt.get("Chat AI Prompt", {
       label: "production",
     });
 
@@ -159,69 +88,21 @@ const actionImpl = async ({ request }: Route.ActionArgs) => {
           }
         : undefined;
 
-    const result = streamText({
-      model: model === "gpt-5-mini" ? openai("gpt-5-codex") : google(model),
-      messages: convertToModelMessages(messages),
-      system: compiledPrompt,
-      stopWhen: stepCountIs(10),
-      providerOptions: {
-        openai: {
-          reasoningSummary: "auto",
+    return createAgentUIStreamResponse({
+      agent,
+      messages,
+      options: {
+        model,
+        instruction: compiledPrompt,
+        telemetry: {
+          metadata: {
+            model,
+            webSearch,
+            langfusePrompt: prompt.toJSON(),
+            ...(pageContextSummary ? { pageContextSummary } : {}),
+          },
         },
       },
-      experimental_telemetry: {
-        isEnabled: true,
-        functionId: "chat-api",
-        metadata: {
-          model,
-          webSearch,
-          langfusePrompt: prompt.toJSON(),
-          ...(pageContextSummary ? { pageContextSummary } : {}),
-        },
-      },
-      tools: {
-        getTransactions,
-        analyzeAndVisualizeTransactions,
-        compareTransactionMetrics,
-      },
-      onFinish: async (payload) => {
-        const content = payload?.content;
-        const outputText = toTextFromContent(content);
-
-        updateActiveObservation({
-          output: outputText,
-        });
-        updateActiveTrace({
-          output: outputText,
-        });
-
-        trace.getActiveSpan()?.end();
-        if (langfuseSpanProcessor) {
-          await langfuseSpanProcessor.forceFlush();
-        }
-      },
-      onError: async (error) => {
-        const errorMessage =
-          error instanceof Error
-            ? `${error.name}: ${error.message}`
-            : String(error);
-
-        updateActiveObservation({
-          output: errorMessage,
-          level: "ERROR",
-        });
-        updateActiveTrace({
-          output: errorMessage,
-        });
-
-        trace.getActiveSpan()?.end();
-        if (langfuseSpanProcessor) {
-          await langfuseSpanProcessor.forceFlush();
-        }
-      },
-    });
-
-    return result.toUIMessageStreamResponse({
       sendSources: true,
       sendReasoning: true,
       ...(assistantMetadata

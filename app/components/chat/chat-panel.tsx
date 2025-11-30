@@ -115,7 +115,11 @@ export type ChatPanelProps = {
   pageContext?: AssistantPageContext;
 };
 
-const defaultSuggestions = ["Analyse my transactions for the last 30 days"];
+const defaultSuggestions = [
+  "Show revenue trends for the past 30 days",
+  "Compare volume and count for last month",
+  "What was the busiest day of the week last month?",
+];
 
 const AssistantAvatar = () => (
   <div className="-mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-background ring-1 ring-border">

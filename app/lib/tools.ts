@@ -19,7 +19,16 @@ export const analyzeAndVisualizeTransactions = tool({
 - Volume or revenue analysis
 
 The tool will automatically aggregate the data and return chart-ready results.
-Chart types are automatically selected: area charts for time series (by-day, by-week, by-month), bar charts for categorical data (by-hour, by-day-of-week), and doughnut charts for proportions (by-status).`,
+Chart types are automatically selected: area charts for time series (by-day, by-week, by-month), bar charts for categorical data (by-hour, by-day-of-week), and doughnut charts for proportions (by-status).
+
+Example user queries that should use this tool:
+- "Show me daily transactions for November"
+- "What's my transaction status breakdown this month?"
+- "Analyze my busiest hours last week"
+- "Show revenue trends for the past 30 days"
+- "Which day of the week has the most transactions?"
+- "What are my transaction patterns by hour?"
+- "Show me weekly transaction volume for this quarter"`,
 
   inputSchema: z.object({
     startDate: z.string().describe("Start date in YYYY-MM-DD format"),
@@ -132,7 +141,19 @@ Chart types are automatically selected: area charts for time series (by-day, by-
 });
 
 export const getTransactions = tool({
-  description: "Get the transactions for a specific time period",
+  description: `Get raw transaction data for a specific time period. Use this when users need:
+- Specific transaction details or lists
+- Customer information (email, name, phone)
+- Individual transaction data without visualization
+- Data for detailed review or analysis
+
+Example user queries that should use this tool:
+- "Show me the transactions from last week"
+- "List all transactions in November"
+- "Get customer details for recent transactions"
+- "What transactions happened on December 1st?"
+- "Show me transaction details for yesterday"
+- "List the latest 50 transactions"`,
   inputSchema: z.object({
     startDate: z.string().describe("The start date of the time period"),
     endDate: z.string().describe("The end date of the time period"),
@@ -192,7 +213,15 @@ export const compareTransactionMetrics = tool({
 
 This tool creates a chart with multiple datasets, one for each metric being compared.
 
-IMPORTANT: For comparing time periods (like "January vs February"), create separate charts instead of using this tool.`,
+IMPORTANT: For comparing time periods (like "January vs February"), create separate charts instead of using this tool.
+
+Example user queries that should use this tool:
+- "Compare volume and count for last month"
+- "Show me transaction count vs average amount by day"
+- "How do volume, count, and average compare this week?"
+- "Compare all three metrics for November"
+- "Show volume vs count trends over the past 30 days"
+- "Compare average transaction amount with total count"`,
 
   inputSchema: z.object({
     startDate: z.string().describe("Start date in YYYY-MM-DD format"),
