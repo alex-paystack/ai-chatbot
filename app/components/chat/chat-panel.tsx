@@ -7,7 +7,7 @@ import {
   type ChangeEvent,
 } from "react";
 import { useChat } from "@ai-sdk/react";
-import type { FileUIPart } from "ai";
+import { type FileUIPart, type UIMessage, DefaultChatTransport } from "ai";
 import {
   Conversation,
   ConversationContent,
@@ -70,7 +70,12 @@ import { Shimmer } from "../../../components/ai-elements/shimmer";
 import { TransactionSummaryCard } from "../../../components/ai-elements/transaction-summary";
 import {
   ChartCard,
+  MultiCurrencyChartCard,
+  TransactionStatusDoughnutCard,
+  type TransactionStatusDoughnutConfig,
   type ChartInputConfig,
+  type MultiCurrencyAreaChartConfig,
+  type PreliminaryMultiCurrencyAreaChartConfig,
 } from "../../../components/ai-elements/chart";
 import { normalizeTransactionsFromOutput } from "~/lib/transactions";
 import { cn } from "~/lib/utils";
@@ -115,6 +120,18 @@ export type ChatPanelProps = {
   pageContext?: AssistantPageContext;
 };
 
+export type ClassificationUIMessage = UIMessage<
+  never,
+  {
+    refusal: {
+      text: string;
+    };
+    clarification: {
+      text: string;
+    };
+  }
+>;
+
 const defaultSuggestions = [
   "Show revenue trends for the past 30 days",
   "Compare volume and count for last month",
@@ -154,7 +171,27 @@ export function ChatPanel({
   variant = "standalone",
   pageContext,
 }: ChatPanelProps) {
-  const { messages, sendMessage, status, regenerate, error } = useChat();
+  const chatId = "123e4567-e89b-12d3-a456-426614174091";
+  const { messages, sendMessage, status, regenerate, error } =
+    useChat<ClassificationUIMessage>({
+      transport: new DefaultChatTransport({
+        api: "http://localhost:3000/chat/stream",
+        prepareSendMessagesRequest(request) {
+          return {
+            body: {
+              conversationId: chatId,
+              message: request.messages.at(-1),
+              mode: "global",
+              // ...request.body,
+            },
+            headers: {
+              Authorization:
+                "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTMyNiwibWZhIjpmYWxzZSwibWZhVHlwZSI6bnVsbCwic3NvTG9naW4iOmZhbHNlLCJqdGkiOiI2OTQ1MjJkYWI0MDQ3NDkxNDEzNWZiZWUiLCJpYXQiOjE3NjYxMzg1ODYsIm5iZiI6MTc2NjEzODU4NiwiZXhwIjoxNzY2MjI0OTg2fQ.5r7-MydS9zytgQv-Er4ZUx02fzCtYPtD8d1IBS7prMU",
+            },
+          };
+        },
+      }),
+    });
   const [input, setInput] = useState("");
   const [model, setModel] = useState(initialModel);
   const [webSearch, setWebSearch] = useState(initialWebSearch);
@@ -190,6 +227,8 @@ export function ChatPanel({
   const handleSubmit = (message: PromptInputMessage) => {
     const hasText = Boolean(message.text);
     const hasAttachments = Boolean(message.files?.length);
+    // window.history.replaceState({}, "", `/chat/${chatId}`);
+
     if (!(hasText || hasAttachments)) {
       return;
     }
@@ -421,6 +460,344 @@ export function ChatPanel({
                       );
                     }
 
+                    // case "text": {
+                    //   const data = {
+                    //     success: true,
+                    //     label: "Daily Transaction Metrics",
+                    //     chartType: "area",
+                    //     chartSeries: [
+                    //       {
+                    //         currency: "NGN",
+                    //         points: [
+                    //           {
+                    //             name: "Sunday, Dec 1",
+                    //             count: 40,
+                    //             volume: 1680000,
+                    //             average: 42000,
+                    //             currency: "NGN",
+                    //           },
+                    //           {
+                    //             name: "Monday, Dec 2",
+                    //             count: 65,
+                    //             volume: 2470000,
+                    //             average: 38000,
+                    //             currency: "NGN",
+                    //           },
+                    //           {
+                    //             name: "Tuesday, Dec 3",
+                    //             count: 80,
+                    //             volume: 3600000,
+                    //             average: 45000,
+                    //             currency: "NGN",
+                    //           },
+                    //           {
+                    //             name: "Wednesday, Dec 4",
+                    //             count: 55,
+                    //             volume: 2200000,
+                    //             average: 40000,
+                    //             currency: "NGN",
+                    //           },
+                    //           {
+                    //             name: "Thursday, Dec 5",
+                    //             count: 95,
+                    //             volume: 4465000,
+                    //             average: 47000,
+                    //             currency: "NGN",
+                    //           },
+                    //           {
+                    //             name: "Friday, Dec 6",
+                    //             count: 120,
+                    //             volume: 6240000,
+                    //             average: 52000,
+                    //             currency: "NGN",
+                    //           },
+                    //           {
+                    //             name: "Saturday, Dec 7",
+                    //             count: 70,
+                    //             volume: 2870000,
+                    //             average: 41000,
+                    //             currency: "NGN",
+                    //           },
+                    //           {
+                    //             name: "Sunday, Dec 8",
+                    //             count: 60,
+                    //             volume: 2340000,
+                    //             average: 39000,
+                    //             currency: "NGN",
+                    //           },
+                    //           {
+                    //             name: "Monday, Dec 9",
+                    //             count: 85,
+                    //             volume: 4080000,
+                    //             average: 48000,
+                    //             currency: "NGN",
+                    //           },
+                    //           {
+                    //             name: "Tuesday, Dec 10",
+                    //             count: 100,
+                    //             volume: 5000000,
+                    //             average: 50000,
+                    //             currency: "NGN",
+                    //           },
+                    //           {
+                    //             name: "Wednesday, Dec 11",
+                    //             count: 75,
+                    //             volume: 3225000,
+                    //             average: 43000,
+                    //             currency: "NGN",
+                    //           },
+                    //           {
+                    //             name: "Thursday, Dec 12",
+                    //             count: 50,
+                    //             volume: 1800000,
+                    //             average: 36000,
+                    //             currency: "NGN",
+                    //           },
+                    //           {
+                    //             name: "Friday, Dec 13",
+                    //             count: 90,
+                    //             volume: 4095000,
+                    //             average: 45500,
+                    //             currency: "NGN",
+                    //           },
+                    //           {
+                    //             name: "Saturday, Dec 14",
+                    //             count: 110,
+                    //             volume: 5610000,
+                    //             average: 51000,
+                    //             currency: "NGN",
+                    //           },
+                    //         ],
+                    //       },
+                    //       {
+                    //         currency: "USD",
+                    //         points: [
+                    //           {
+                    //             name: "Sunday, Dec 1",
+                    //             count: 10,
+                    //             volume: 950000,
+                    //             average: 95000,
+                    //             currency: "USD",
+                    //           },
+                    //           {
+                    //             name: "Monday, Dec 2",
+                    //             count: 15,
+                    //             volume: 1350000,
+                    //             average: 90000,
+                    //             currency: "USD",
+                    //           },
+                    //           {
+                    //             name: "Tuesday, Dec 3",
+                    //             count: 18,
+                    //             volume: 1980000,
+                    //             average: 110000,
+                    //             currency: "USD",
+                    //           },
+                    //           {
+                    //             name: "Wednesday, Dec 4",
+                    //             count: 12,
+                    //             volume: 1200000,
+                    //             average: 100000,
+                    //             currency: "USD",
+                    //           },
+                    //           {
+                    //             name: "Thursday, Dec 5",
+                    //             count: 20,
+                    //             volume: 2100000,
+                    //             average: 105000,
+                    //             currency: "USD",
+                    //           },
+                    //           {
+                    //             name: "Friday, Dec 6",
+                    //             count: 25,
+                    //             volume: 2875000,
+                    //             average: 115000,
+                    //             currency: "USD",
+                    //           },
+                    //           {
+                    //             name: "Saturday, Dec 7",
+                    //             count: 16,
+                    //             volume: 1568000,
+                    //             average: 98000,
+                    //             currency: "USD",
+                    //           },
+                    //           {
+                    //             name: "Sunday, Dec 8",
+                    //             count: 14,
+                    //             volume: 1428000,
+                    //             average: 102000,
+                    //             currency: "USD",
+                    //           },
+                    //           {
+                    //             name: "Monday, Dec 9",
+                    //             count: 19,
+                    //             volume: 2052000,
+                    //             average: 108000,
+                    //             currency: "USD",
+                    //           },
+                    //           {
+                    //             name: "Tuesday, Dec 10",
+                    //             count: 22,
+                    //             volume: 2464000,
+                    //             average: 112000,
+                    //             currency: "USD",
+                    //           },
+                    //           {
+                    //             name: "Wednesday, Dec 11",
+                    //             count: 17,
+                    //             volume: 1683000,
+                    //             average: 99000,
+                    //             currency: "USD",
+                    //           },
+                    //           {
+                    //             name: "Thursday, Dec 12",
+                    //             count: 11,
+                    //             volume: 1023000,
+                    //             average: 93000,
+                    //             currency: "USD",
+                    //           },
+                    //           {
+                    //             name: "Friday, Dec 13",
+                    //             count: 21,
+                    //             volume: 2247000,
+                    //             average: 107000,
+                    //             currency: "USD",
+                    //           },
+                    //           {
+                    //             name: "Saturday, Dec 14",
+                    //             count: 24,
+                    //             volume: 2736000,
+                    //             average: 114000,
+                    //             currency: "USD",
+                    //           },
+                    //         ],
+                    //       },
+                    //     ],
+                    //     summary: {
+                    //       totalCount: 1339,
+                    //       totalVolume: null,
+                    //       overallAverage: null,
+                    //       perCurrency: [
+                    //         {
+                    //           currency: "NGN",
+                    //           totalCount: 1095,
+                    //           totalVolume: 49675000,
+                    //           overallAverage: 45358,
+                    //         },
+                    //         {
+                    //           currency: "USD",
+                    //           totalCount: 244,
+                    //           totalVolume: 25656000,
+                    //           overallAverage: 105131.15,
+                    //         },
+                    //       ],
+                    //       dateRange: {
+                    //         from: "Dec 1, 2024",
+                    //         to: "Dec 14, 2024",
+                    //       },
+                    //     },
+                    //     message:
+                    //       "Static mock data for overlapping area chart (count, volume, average)",
+                    //   };
+
+                    //   return (
+                    //     <div key={`${message.id}-${i}`}>
+                    //       <MultiCurrencyChartCard
+                    //         config={data as MultiCurrencyAreaChartConfig}
+                    //         defaultMetric="count"
+                    //       />
+                    //     </div>
+                    //   );
+                    // }
+
+                    // case "text": {
+                    //   const data = {
+                    //     success: true,
+                    //     label: "Transaction Metrics by Status",
+                    //     chartType: "doughnut",
+                    //     chartData: [
+                    //       {
+                    //         name: "success",
+                    //         count: 620,
+                    //         volume: 28500000,
+                    //         average: 45968,
+                    //         currency: "NGN",
+                    //       },
+                    //       {
+                    //         name: "failed",
+                    //         count: 120,
+                    //         volume: 1800000,
+                    //         average: 15000,
+                    //         currency: "NGN",
+                    //       },
+                    //       {
+                    //         name: "pending",
+                    //         count: 60,
+                    //         volume: 2700000,
+                    //         average: 45000,
+                    //         currency: "NGN",
+                    //       },
+                    //       {
+                    //         name: "success",
+                    //         count: 140,
+                    //         volume: 12600000,
+                    //         average: 90000,
+                    //         currency: "USD",
+                    //       },
+                    //       {
+                    //         name: "failed",
+                    //         count: 35,
+                    //         volume: 210000,
+                    //         average: 6000,
+                    //         currency: "USD",
+                    //       },
+                    //       {
+                    //         name: "pending",
+                    //         count: 25,
+                    //         volume: 2125000,
+                    //         average: 85000,
+                    //         currency: "USD",
+                    //       },
+                    //     ],
+                    //     summary: {
+                    //       totalCount: 1000,
+                    //       totalVolume: null,
+                    //       overallAverage: null,
+                    //       perCurrency: [
+                    //         {
+                    //           currency: "NGN",
+                    //           totalCount: 800,
+                    //           totalVolume: 33000000,
+                    //           overallAverage: 41250,
+                    //         },
+                    //         {
+                    //           currency: "USD",
+                    //           totalCount: 200,
+                    //           totalVolume: 14925000,
+                    //           overallAverage: 74625,
+                    //         },
+                    //       ],
+                    //     },
+                    //     message:
+                    //       "Static mock data for transaction status doughnut chart",
+                    //   };
+
+                    //   return (
+                    //     <TransactionStatusDoughnutCard
+                    //       config={data as TransactionStatusDoughnutConfig}
+                    //       defaultMetric="count"
+                    //     />
+                    //   );
+                    // }
+
+                    case "data-refusal": {
+                      return (
+                        <div key={`${message.id}-${i}`}>
+                          <p>{part.data.text}</p>
+                        </div>
+                      );
+                    }
+
                     case "reasoning":
                       return (
                         <Reasoning
@@ -478,6 +855,285 @@ export function ChatPanel({
                           meta={transactionData.meta}
                           isLoading={isLoading}
                         />
+                      );
+                    }
+
+                    case "tool-generateChartData": {
+                      // const data = {
+                      //   success: true,
+                      //   label:
+                      //     "Daily Transaction Metrics (Dec 1, 2024 - Dec 14, 2024)",
+                      //   chartType: "area",
+                      //   chartSeries: [
+                      //     {
+                      //       currency: "NGN",
+                      //       points: [
+                      //         {
+                      //           name: "Sunday, Dec 1",
+                      //           count: 40,
+                      //           volume: 1680000,
+                      //           average: 42000,
+                      //           currency: "NGN",
+                      //         },
+                      //         {
+                      //           name: "Monday, Dec 2",
+                      //           count: 65,
+                      //           volume: 2470000,
+                      //           average: 38000,
+                      //           currency: "NGN",
+                      //         },
+                      //         {
+                      //           name: "Tuesday, Dec 3",
+                      //           count: 80,
+                      //           volume: 3600000,
+                      //           average: 45000,
+                      //           currency: "NGN",
+                      //         },
+                      //         {
+                      //           name: "Wednesday, Dec 4",
+                      //           count: 55,
+                      //           volume: 2200000,
+                      //           average: 40000,
+                      //           currency: "NGN",
+                      //         },
+                      //         {
+                      //           name: "Thursday, Dec 5",
+                      //           count: 95,
+                      //           volume: 4465000,
+                      //           average: 47000,
+                      //           currency: "NGN",
+                      //         },
+                      //         {
+                      //           name: "Friday, Dec 6",
+                      //           count: 120,
+                      //           volume: 6240000,
+                      //           average: 52000,
+                      //           currency: "NGN",
+                      //         },
+                      //         {
+                      //           name: "Saturday, Dec 7",
+                      //           count: 70,
+                      //           volume: 2870000,
+                      //           average: 41000,
+                      //           currency: "NGN",
+                      //         },
+                      //         {
+                      //           name: "Sunday, Dec 8",
+                      //           count: 60,
+                      //           volume: 2340000,
+                      //           average: 39000,
+                      //           currency: "NGN",
+                      //         },
+                      //         {
+                      //           name: "Monday, Dec 9",
+                      //           count: 85,
+                      //           volume: 4080000,
+                      //           average: 48000,
+                      //           currency: "NGN",
+                      //         },
+                      //         {
+                      //           name: "Tuesday, Dec 10",
+                      //           count: 100,
+                      //           volume: 5000000,
+                      //           average: 50000,
+                      //           currency: "NGN",
+                      //         },
+                      //         {
+                      //           name: "Wednesday, Dec 11",
+                      //           count: 75,
+                      //           volume: 3225000,
+                      //           average: 43000,
+                      //           currency: "NGN",
+                      //         },
+                      //         {
+                      //           name: "Thursday, Dec 12",
+                      //           count: 50,
+                      //           volume: 1800000,
+                      //           average: 36000,
+                      //           currency: "NGN",
+                      //         },
+                      //         {
+                      //           name: "Friday, Dec 13",
+                      //           count: 90,
+                      //           volume: 4095000,
+                      //           average: 45500,
+                      //           currency: "NGN",
+                      //         },
+                      //         {
+                      //           name: "Saturday, Dec 14",
+                      //           count: 110,
+                      //           volume: 5610000,
+                      //           average: 51000,
+                      //           currency: "NGN",
+                      //         },
+                      //       ],
+                      //     },
+                      //     {
+                      //       currency: "USD",
+                      //       points: [
+                      //         {
+                      //           name: "Sunday, Dec 1",
+                      //           count: 10,
+                      //           volume: 950000,
+                      //           average: 95000,
+                      //           currency: "USD",
+                      //         },
+                      //         {
+                      //           name: "Monday, Dec 2",
+                      //           count: 15,
+                      //           volume: 1350000,
+                      //           average: 90000,
+                      //           currency: "USD",
+                      //         },
+                      //         {
+                      //           name: "Tuesday, Dec 3",
+                      //           count: 18,
+                      //           volume: 1980000,
+                      //           average: 110000,
+                      //           currency: "USD",
+                      //         },
+                      //         {
+                      //           name: "Wednesday, Dec 4",
+                      //           count: 12,
+                      //           volume: 1200000,
+                      //           average: 100000,
+                      //           currency: "USD",
+                      //         },
+                      //         {
+                      //           name: "Thursday, Dec 5",
+                      //           count: 20,
+                      //           volume: 2100000,
+                      //           average: 105000,
+                      //           currency: "USD",
+                      //         },
+                      //         {
+                      //           name: "Friday, Dec 6",
+                      //           count: 25,
+                      //           volume: 2875000,
+                      //           average: 115000,
+                      //           currency: "USD",
+                      //         },
+                      //         {
+                      //           name: "Saturday, Dec 7",
+                      //           count: 16,
+                      //           volume: 1568000,
+                      //           average: 98000,
+                      //           currency: "USD",
+                      //         },
+                      //         {
+                      //           name: "Sunday, Dec 8",
+                      //           count: 14,
+                      //           volume: 1428000,
+                      //           average: 102000,
+                      //           currency: "USD",
+                      //         },
+                      //         {
+                      //           name: "Monday, Dec 9",
+                      //           count: 19,
+                      //           volume: 2052000,
+                      //           average: 108000,
+                      //           currency: "USD",
+                      //         },
+                      //         {
+                      //           name: "Tuesday, Dec 10",
+                      //           count: 22,
+                      //           volume: 2464000,
+                      //           average: 112000,
+                      //           currency: "USD",
+                      //         },
+                      //         {
+                      //           name: "Wednesday, Dec 11",
+                      //           count: 17,
+                      //           volume: 1683000,
+                      //           average: 99000,
+                      //           currency: "USD",
+                      //         },
+                      //         {
+                      //           name: "Thursday, Dec 12",
+                      //           count: 11,
+                      //           volume: 1023000,
+                      //           average: 93000,
+                      //           currency: "USD",
+                      //         },
+                      //         {
+                      //           name: "Friday, Dec 13",
+                      //           count: 21,
+                      //           volume: 2247000,
+                      //           average: 107000,
+                      //           currency: "USD",
+                      //         },
+                      //         {
+                      //           name: "Saturday, Dec 14",
+                      //           count: 24,
+                      //           volume: 2736000,
+                      //           average: 114000,
+                      //           currency: "USD",
+                      //         },
+                      //       ],
+                      //     },
+                      //   ],
+                      //   summary: {
+                      //     totalCount: 1339,
+                      //     totalVolume: null,
+                      //     overallAverage: null,
+                      //     perCurrency: [
+                      //       {
+                      //         currency: "NGN",
+                      //         totalCount: 1095,
+                      //         totalVolume: 49675000,
+                      //         overallAverage: 45358,
+                      //       },
+                      //       {
+                      //         currency: "USD",
+                      //         totalCount: 244,
+                      //         totalVolume: 25656000,
+                      //         overallAverage: 105131.15,
+                      //       },
+                      //     ],
+                      //     dateRange: {
+                      //       from: "Dec 1, 2024",
+                      //       to: "Dec 14, 2024",
+                      //     },
+                      //   },
+                      //   message:
+                      //     "Static mock data for overlapping area chart (count, volume, average)",
+                      // };
+
+                      const isFinalOutput =
+                        part.state === "output-available" &&
+                        !(
+                          part.output as PreliminaryMultiCurrencyAreaChartConfig
+                        ).loading;
+                      const chartData = isFinalOutput
+                        ? part.output
+                        : {
+                            chartSeries: [],
+                            chartData: [],
+                            summary: {},
+                            loading: true,
+                            message: "Loading...",
+                          };
+                      const isLoading = part.state !== "output-available";
+                      const isDonutChart = chartData.chartType === "doughnut";
+
+                      return (
+                        <div key={`${message.id}-${i}`}>
+                          {isDonutChart ? (
+                            <TransactionStatusDoughnutCard
+                              config={
+                                chartData as TransactionStatusDoughnutConfig
+                              }
+                              defaultMetric="count"
+                              isLoading={isLoading}
+                            />
+                          ) : (
+                            <MultiCurrencyChartCard
+                              config={chartData as MultiCurrencyAreaChartConfig}
+                              defaultMetric="count"
+                              isLoading={isLoading}
+                            />
+                          )}
+                        </div>
                       );
                     }
 
