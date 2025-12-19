@@ -118,6 +118,9 @@ export type ChatPanelProps = {
   suggestions?: string[];
   variant?: ChatPanelVariant;
   pageContext?: AssistantPageContext;
+  initialMessagesData?: any;
+  chatId?: string;
+  API_KEY?: string;
 };
 
 export type ClassificationUIMessage = UIMessage<
@@ -170,10 +173,14 @@ export function ChatPanel({
   suggestions = defaultSuggestions,
   variant = "standalone",
   pageContext,
+  initialMessagesData,
+  chatId,
+  API_KEY,
 }: ChatPanelProps) {
-  const chatId = "123e4567-e89b-12d3-a456-426614174091";
   const { messages, sendMessage, status, regenerate, error } =
     useChat<ClassificationUIMessage>({
+      id: chatId,
+      messages: initialMessagesData,
       transport: new DefaultChatTransport({
         api: "http://localhost:3000/chat/stream",
         prepareSendMessagesRequest(request) {
@@ -185,8 +192,7 @@ export function ChatPanel({
               // ...request.body,
             },
             headers: {
-              Authorization:
-                "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTMyNiwibWZhIjpmYWxzZSwibWZhVHlwZSI6bnVsbCwic3NvTG9naW4iOmZhbHNlLCJqdGkiOiI2OTQ1MjJkYWI0MDQ3NDkxNDEzNWZiZWUiLCJpYXQiOjE3NjYxMzg1ODYsIm5iZiI6MTc2NjEzODU4NiwiZXhwIjoxNzY2MjI0OTg2fQ.5r7-MydS9zytgQv-Er4ZUx02fzCtYPtD8d1IBS7prMU",
+              Authorization: `Bearer ${API_KEY}`,
             },
           };
         },
@@ -792,9 +798,12 @@ export function ChatPanel({
 
                     case "data-refusal": {
                       return (
-                        <div key={`${message.id}-${i}`}>
-                          <p>{part.data.text}</p>
-                        </div>
+                        <Message key={`${message.id}-${i}`} from="assistant">
+                          <AssistantAvatar />
+                          <MessageContent>
+                            <MessageResponse>{part.data.text}</MessageResponse>
+                          </MessageContent>
+                        </Message>
                       );
                     }
 
@@ -818,45 +827,45 @@ export function ChatPanel({
                         </Reasoning>
                       );
 
-                    case "tool-getTransactions": {
-                      // Hide the transaction summary if a chart is being generated
-                      // (the chart provides the visualization the user asked for)
-                      const hasChartInMessage = message.parts.some(
-                        (p) => p.type === "tool-generateChart"
-                      );
-                      if (hasChartInMessage) {
-                        return null;
-                      }
+                    // case "tool-getTransactions": {
+                    //   // Hide the transaction summary if a chart is being generated
+                    //   // (the chart provides the visualization the user asked for)
+                    //   const hasChartInMessage = message.parts.some(
+                    //     (p) => p.type === "tool-generateChart"
+                    //   );
+                    //   if (hasChartInMessage) {
+                    //     return null;
+                    //   }
 
-                      if (part.errorText) {
-                        return (
-                          <div
-                            key={`${message.id}-${i}`}
-                            className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive"
-                          >
-                            {part.errorText}
-                          </div>
-                        );
-                      }
+                    //   if (part.errorText) {
+                    //     return (
+                    //       <div
+                    //         key={`${message.id}-${i}`}
+                    //         className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive"
+                    //       >
+                    //         {part.errorText}
+                    //       </div>
+                    //     );
+                    //   }
 
-                      const isFinalOutput =
-                        part.state === "output-available" && !part.preliminary;
-                      const transactionData = isFinalOutput
-                        ? normalizeTransactionsFromOutput(part.output)
-                        : { transactions: [], meta: {} };
-                      const isLoading =
-                        part.state !== "output-available" ||
-                        Boolean(part.preliminary);
+                    //   const isFinalOutput =
+                    //     part.state === "output-available" && !part.preliminary;
+                    //   const transactionData = isFinalOutput
+                    //     ? normalizeTransactionsFromOutput(part.output)
+                    //     : { transactions: [], meta: {} };
+                    //   const isLoading =
+                    //     part.state !== "output-available" ||
+                    //     Boolean(part.preliminary);
 
-                      return (
-                        <TransactionSummaryCard
-                          key={`${message.id}-${i}`}
-                          transactions={transactionData.transactions}
-                          meta={transactionData.meta}
-                          isLoading={isLoading}
-                        />
-                      );
-                    }
+                    //   return (
+                    //     <TransactionSummaryCard
+                    //       key={`${message.id}-${i}`}
+                    //       transactions={transactionData.transactions}
+                    //       meta={transactionData.meta}
+                    //       isLoading={isLoading}
+                    //     />
+                    //   );
+                    // }
 
                     case "tool-generateChartData": {
                       // const data = {
